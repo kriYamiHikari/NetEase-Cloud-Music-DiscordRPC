@@ -27,8 +27,8 @@ internal static class User32
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowRect(IntPtr hwnd, out RECT rc);
 
-    [DllImport("user32.dll", EntryPoint = "FindWindow")]
-    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+    [DllImport("user32.dll", EntryPoint = "FindWindow",SetLastError = true)]
+    internal static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, int lParam);
 
@@ -45,7 +45,7 @@ internal static class User32
     private static extern int GetWindowTextLength(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern int GetWindowThreadProcessId(IntPtr handle, out int pid);
+    internal static extern int GetWindowThreadProcessId(IntPtr handle, out int pid);
 
     private static string GetClassName(IntPtr hwnd)
     {

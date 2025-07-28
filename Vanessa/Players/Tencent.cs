@@ -44,38 +44,27 @@ internal sealed class Tencent : IMusicPlayer
     public Tencent(int pid)
     {
         _pid = pid;
-        using var p = Process.GetProcessById(pid);
-
-        foreach (ProcessModule module in p.Modules)
+        
+        var moduleBaseAddress = Utils.ProcessUtils.GetModuleBaseAddress(pid, "QQMusic.dll");
+        
+        if (moduleBaseAddress == IntPtr.Zero)
         {
-            if (!"QQMusic.dll".Equals(module.ModuleName))
-            {
-                continue;
-            }
-
-            var process = new ProcessMemory(pid);
-            var address = module.BaseAddress;
-
-            if (Memory.FindPattern(CurrentSongInfoPattern, pid, address, out var patternAddress))
-            {
-                var currentSongAddress = process.ReadInt32(patternAddress, 1);
-                _currentSongInfoAddress = currentSongAddress;
-            }
-
-            _process = process;
-
-            break;
+            throw new DllNotFoundException("Could not find QQMusic.dll in the target process. It might not be fully loaded yet.");
         }
-
-        if (_process is null)
+        
+        _process = new ProcessMemory(pid);
+        
+        if (Memory.FindPattern(CurrentSongInfoPattern, pid, moduleBaseAddress, out var patternAddress))
         {
-            throw new EntryPointNotFoundException("Failed to find process");
+            var songInfoPointer = _process.ReadInt32(patternAddress, 1);
+            _currentSongInfoAddress = songInfoPointer;
         }
-
+        
         if (_currentSongInfoAddress == 0)
         {
-            throw new EntryPointNotFoundException("_currentSongInfoAddress is 0");
+            throw new EntryPointNotFoundException("_currentSongInfoAddress is 0. Pattern might be outdated or process state is invalid.");
         }
+
     }
 
     public bool Validate(int pid)
