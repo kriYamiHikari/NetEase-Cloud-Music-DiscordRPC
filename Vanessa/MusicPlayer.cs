@@ -4,7 +4,5 @@ namespace Kxnrl.Vanessa;
 
 internal interface IMusicPlayer
 {
-    bool Validate(int pid);
-
     PlayerInfo? GetPlayerInfo();
 }
