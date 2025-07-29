@@ -17,9 +17,7 @@ internal static class Memory
             _lastProcessId = processId;
         }
 
-        (nint pStart, byte[] memoryBlock) cacheEntry;
-
-        if (!ModuleCache.TryGetValue((processId, moduleBaseAddress), out cacheEntry))
+        if (!ModuleCache.TryGetValue((processId, moduleBaseAddress), out (nint pStart, byte[] memoryBlock) cacheEntry))
         {
             var memory = new ProcessMemory(processId);
 
@@ -133,20 +131,16 @@ internal static class Memory
     }
 }
 
-internal sealed class ProcessMemory
+internal sealed class ProcessMemory(nint process)
 {
-    private readonly nint _process;
-
-    public ProcessMemory(nint process)
-        => _process = process;
-
-    public ProcessMemory(int processId)
-        => _process = OpenProcess(0x0010, IntPtr.Zero, processId);
+    public ProcessMemory(int processId) : this(OpenProcess(0x0010, IntPtr.Zero, processId))
+    {
+    }
 
     public byte[] ReadBytes(IntPtr offset, int length)
     {
         var bytes = new byte[length];
-        ReadProcessMemory(_process, offset, bytes, length, IntPtr.Zero);
+        ReadProcessMemory(process, offset, bytes, length, IntPtr.Zero);
 
         return bytes;
     }

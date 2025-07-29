@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Kxnrl.Vanessa.Utils;
 
-public class StringUtils
+public static class StringUtils
 {
     /// <summary>
     /// 在一串 UTF-8 字节串中从后往前找到最后一个完整的 Unicode 字符
@@ -11,7 +11,7 @@ public class StringUtils
     /// <param name="buffer">要查找的字节串</param>
     /// <param name="byteCount">要查找的字节串的长度</param>
     /// <returns>最后一个完整 Unicode 字符的下标</returns>
-    public static int FindLastCompleteCharIndex(byte[] buffer, int byteCount)
+    private static int FindLastCompleteCharIndex(byte[] buffer, int byteCount)
     {
         // 从字节数组的末尾向前遍历，找到最后一个完整的字符的索引
         for (var position = byteCount - 1; position >= 0; position--)
