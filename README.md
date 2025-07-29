@@ -7,8 +7,9 @@ Enables Discord [Rich Presence](https://discordapp.com/rich-presence) For Neteas
   
   
 ### Info
-* This application will auto launch on system start.
-* 这个软件会在你开机的时候自启动.  
+* ~~This application will auto launch on system start.~~
+* ~~这个软件会在你开机的时候自启动.~~
+* 此版本不会开机自启动，若需自启动要手动从托盘图标启动。
   
   
 ### Feature
@@ -17,8 +18,9 @@ Enables Discord [Rich Presence](https://discordapp.com/rich-presence) For Neteas
 * 同步动态到Discord.
 * 支持按钮跟随一起听.  
 * 支持实时状态显示.
+* 支持多个播放器播放信息同时显示
   
   
 ### Screenshot
-<img src="https://github.com/Kxnrl/NetEase-Cloud-Music-DiscordRPC/raw/refs/heads/master/.github/NetEase.png" width="50%" height="50%" /><img src="https://github.com/Kxnrl/NetEase-Cloud-Music-DiscordRPC/raw/refs/heads/master/.github/Tencent.png" width="50%" height="50%" />
+<img width="442" height="337" alt="image" src="https://github.com/user-attachments/assets/9e154853-253a-4f7c-933c-ef3aa963e2d6" />
   
