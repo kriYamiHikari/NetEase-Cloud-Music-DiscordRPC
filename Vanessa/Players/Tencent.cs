@@ -78,6 +78,10 @@ internal sealed class Tencent : IMusicPlayer
         {
             return null;
         }
+        
+        // 停止也视为暂停播放
+        var playStatus = GetPlayStatus();
+        var isPaused = playStatus is 0 or 2;
 
         return new PlayerInfo
         {
@@ -88,9 +92,7 @@ internal sealed class Tencent : IMusicPlayer
             Cover    = GetAlbumThumbnailUrl(),
             Schedule = GetSongSchedule() * 0.001,
             Duration = GetSongDuration() * 0.001,
-            Pause    = IsPaused(),
-
-            // lock
+            Pause    = isPaused,
             Url = $"https://y.qq.com/n/ryqq/songDetail/{id}",
         };
     }
@@ -139,8 +141,12 @@ internal sealed class Tencent : IMusicPlayer
 
         return Encoding.UTF8.GetString(strBuffer);
     }
-
-    // 0 暂停， 1播放， 3缓冲
-    private bool IsPaused()
-        => _process.ReadInt32(_currentSongInfoAddress, (StdStringSize * 4) + 16) == 0;
+    
+    /// <summary>
+    /// 获取播放状态的原始值
+    /// 0: 暂停, 1: 播放, 2: 停止, 3: 缓冲
+    /// </summary>
+    /// <returns>播放状态的整数值</returns>
+    private int GetPlayStatus()
+        => _process.ReadInt32(_currentSongInfoAddress, (StdStringSize * 4) + 16);
 }
