@@ -13,63 +13,47 @@ namespace Kxnrl.Vanessa;
 /// </summary>
 internal class RpcManager(DiscordRpcClient netEaseClient, DiscordRpcClient tencentClient)
 {
-    private IMusicPlayer? _activePlayer;
-    private string _activePlayerName = string.Empty;
-    private DiscordRpcClient? _activeRpcClient;
+    private class PlayerState
+    {
+        public IMusicPlayer? Player { get; set; }
+
+        // 状态检测
+        public PlayerInfo? LastPolledInfo { get; set; }
+        public DateTime LastPollTime { get; set; } = DateTime.MinValue;
+
+        // 防抖机制
+        public PlayerInfo? PendingUpdateInfo { get; set; }
+        public DateTime LastChangeDetectedTime { get; set; } = DateTime.MinValue;
+    }
+
+    private readonly PlayerState _netEaseState = new();
+    private readonly PlayerState _tencentState = new();
+
+    // 如果实际进度变化与时间流逝的差异超过0.4秒，则认为跳转了歌曲进度
+    private const double JumpToleranceSeconds = 0.4;
+
+    // 防抖处理，只有在状态稳定超过1.5秒后，才发送RPC更新
+    private const double DebounceWindowSeconds = 1.5;
 
     /// <summary>
     /// 启动无限循环的更新线程
     /// </summary>
     public async Task Start()
     {
-        PlayerInfo? lastPolledInfo = null;
-        var lastPollTime = DateTime.MinValue;
-        // 如果实际进度变化与时间流逝的差异超过0.4秒，则认为跳转了歌曲进度
-        const double jumpToleranceSeconds = 0.4;
-
-        PlayerInfo? pendingUpdateInfo = null;
-        var lastChangeDetectedTime = DateTime.MinValue;
-        // 防抖处理，只有在状态稳定超过1.5秒后，才发送RPC更新
-        const double debounceWindowSeconds = 1.5;
-
         while (true)
         {
+            var currentTime = DateTime.UtcNow;
             try
             {
-                UpdateActivePlayer();
-
-                var currentTime = DateTime.UtcNow;
-                var currentPlayerInfo = _activePlayer?.GetPlayerInfo();
-
-                var isStateChanged = DetectStateChange(currentPlayerInfo, lastPolledInfo, currentTime, lastPollTime,
-                    jumpToleranceSeconds);
-                if (isStateChanged)
-                {
-                    Debug.WriteLine(
-                        $"State change detected. Resetting debounce timer for: {currentPlayerInfo?.Title ?? "None (Clear)"}");
-                    pendingUpdateInfo = currentPlayerInfo;
-                    lastChangeDetectedTime = currentTime;
-                }
-
-                if (pendingUpdateInfo is not null &&
-                    (currentTime - lastChangeDetectedTime).TotalSeconds > debounceWindowSeconds)
-                {
-                    Debug.WriteLine($"Debounce window passed. Sending RPC update for: {pendingUpdateInfo.Value.Title}");
-                    UpdateRichPresence(_activeRpcClient, pendingUpdateInfo.Value, _activePlayerName);
-                    pendingUpdateInfo = null;
-                }
-
-                lastPolledInfo = currentPlayerInfo;
-                lastPollTime = currentTime;
+                PollPlayer(_netEaseState, "OrpheusBrowserHost", "NetEase CloudMusic", netEaseClient,
+                    pid => new NetEase(pid), currentTime);
+                PollPlayer(_tencentState, "QQMusic_Daemon_Wnd", "Tencent QQMusic", tencentClient,
+                    pid => new Tencent(pid), currentTime);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] An exception occurred in UpdateThread: {ex.Message}");
-                _activePlayer = null;
-                lastPolledInfo = null;
-                pendingUpdateInfo = null;
-                netEaseClient.ClearPresence();
-                tencentClient.ClearPresence();
+                Debug.WriteLine($"[FATAL ERROR] An exception occurred in the main poll loop: {ex.Message}");
+                ClearAllPlayers();
             }
             finally
             {
@@ -79,48 +63,70 @@ internal class RpcManager(DiscordRpcClient netEaseClient, DiscordRpcClient tence
     }
 
     /// <summary>
-    /// 检测并更新当前活动的播放器实例
+    /// 播放器轮询方法，包含进程检测、状态检测、防抖和RPC更新
     /// </summary>
-    private void UpdateActivePlayer()
+    private static void PollPlayer(PlayerState state, string windowClass, string playerName, DiscordRpcClient rpcClient,
+        Func<int, IMusicPlayer> playerFactory, DateTime currentTime)
     {
-        // 优先检测网易云音乐
-        var netEaseHwnd = Win32Api.User32.FindWindow("OrpheusBrowserHost", null);
-        if (netEaseHwnd != IntPtr.Zero &&
-            Win32Api.User32.GetWindowThreadProcessId(netEaseHwnd, out var netEaseProcessId) != 0)
+        var hwnd = Win32Api.User32.FindWindow(windowClass, null);
+        if (hwnd != IntPtr.Zero && Win32Api.User32.GetWindowThreadProcessId(hwnd, out var pid) != 0)
         {
-            if (_activePlayer is NetEase) return;
+            if (state.Player is null)
+            {
+                Debug.WriteLine($"[{playerName}] Player process detected. Creating instance.");
+                state.Player = playerFactory(pid);
+            }
 
-            Debug.WriteLine("Switching to NetEase CloudMusic player.");
-            _activeRpcClient?.ClearPresence();
+            var currentInfo = state.Player.GetPlayerInfo();
 
-            _activePlayer = new NetEase(netEaseProcessId);
-            _activePlayerName = "NetEase CloudMusic";
-            _activeRpcClient = netEaseClient;
-            return;
+            // 状态变化检测
+            var isStateChanged = DetectStateChange(currentInfo, state.LastPolledInfo, currentTime, state.LastPollTime,
+                JumpToleranceSeconds);
+            if (isStateChanged)
+            {
+                Debug.WriteLine(
+                    $"[{playerName}] State change detected. Resetting debounce timer for: {currentInfo?.Title ?? "None (Clear)"}");
+                state.PendingUpdateInfo = currentInfo;
+                state.LastChangeDetectedTime = currentTime;
+            }
+
+            // 防抖
+            if (state.PendingUpdateInfo is not null &&
+                (currentTime - state.LastChangeDetectedTime).TotalSeconds > DebounceWindowSeconds)
+            {
+                Debug.WriteLine($"[{playerName}] Debounce window passed. Sending RPC update.");
+                UpdateOrClearPresence(rpcClient, state.PendingUpdateInfo, playerName);
+                state.PendingUpdateInfo = null;
+            }
+
+            state.LastPolledInfo = currentInfo;
+            state.LastPollTime = currentTime;
         }
-
-        // 如果没有网易云，再检测QQ音乐
-        var tencentHwnd = Win32Api.User32.FindWindow("QQMusic_Daemon_Wnd", null);
-        if (tencentHwnd != IntPtr.Zero && Win32Api.User32.GetWindowThreadProcessId(tencentHwnd, out var tencentId) != 0)
+        else
         {
-            if (_activePlayer is Tencent) return;
-
-            Debug.WriteLine("Switching to Tencent QQMusic player.");
-            _activeRpcClient?.ClearPresence();
-
-            _activePlayer = new Tencent(tencentId);
-            _activePlayerName = "Tencent QQMusic";
-            _activeRpcClient = tencentClient;
-            return;
+            if (state.Player is null) return;
+            Debug.WriteLine($"[{playerName}] Player process lost. Clearing instance and RPC.");
+            rpcClient.ClearPresence();
+            state.Player = null;
+            state.LastPolledInfo = null;
+            state.PendingUpdateInfo = null;
         }
+    }
 
-        if (_activePlayer is null) return;
+    /// <summary>
+    /// 发生严重错误时，清理所有播放器状态
+    /// </summary>
+    private void ClearAllPlayers()
+    {
+        netEaseClient.ClearPresence();
+        _netEaseState.Player = null;
+        _netEaseState.LastPolledInfo = null;
+        _netEaseState.PendingUpdateInfo = null;
 
-        Debug.WriteLine("No active player detected. Clearing player instance and presence.");
-        _activeRpcClient?.ClearPresence();
-        _activePlayer = null;
-        _activePlayerName = string.Empty;
-        _activeRpcClient = null;
+        tencentClient.ClearPresence();
+        _tencentState.Player = null;
+        _tencentState.LastPolledInfo = null;
+        _tencentState.PendingUpdateInfo = null;
     }
 
     /// <summary>
@@ -141,26 +147,30 @@ internal class RpcManager(DiscordRpcClient netEaseClient, DiscordRpcClient tence
     }
 
     /// <summary>
-    /// 构建并发送Rich Presence更新到Discord
+    /// 根据播放信息更新或清除Rich Presence
     /// </summary>
-    private static void UpdateRichPresence(DiscordRpcClient? rpcClient, PlayerInfo info, string playerName)
+    private static void UpdateOrClearPresence(DiscordRpcClient rpcClient, PlayerInfo? info, string playerName)
     {
-        if (rpcClient is null) return;
+        if (info is not { } playerInfo)
+        {
+            rpcClient.ClearPresence();
+            return;
+        }
 
         var presence = new RichPresence
         {
-            State = StringUtils.GetTruncatedStringByMaxByteLength($"🎤 {info.Artists}", 128),
+            State = StringUtils.GetTruncatedStringByMaxByteLength($"🎤 {playerInfo.Artists}", 128),
             Type = ActivityType.Listening,
             Assets = new Assets
             {
-                LargeImageKey = info.Cover,
-                LargeImageText = StringUtils.GetTruncatedStringByMaxByteLength($"💿 {info.Album}", 128),
+                LargeImageKey = playerInfo.Cover,
+                LargeImageText = StringUtils.GetTruncatedStringByMaxByteLength($"💿 {playerInfo.Album}", 128),
                 SmallImageKey = "timg",
                 SmallImageText = playerName,
             },
             Buttons =
             [
-                new Button { Label = "🎧 Listen", Url = info.Url },
+                new Button { Label = "🎧 Listen", Url = playerInfo.Url },
                 new Button
                 {
                     Label = "🆕 View App on GitHub (fork)",
@@ -170,20 +180,19 @@ internal class RpcManager(DiscordRpcClient netEaseClient, DiscordRpcClient tence
         };
 
         // 根据播放状态决定是否设置时间戳和修改状态文本
-        if (!info.Pause)
+        if (!playerInfo.Pause)
         {
-            presence.Details = StringUtils.GetTruncatedStringByMaxByteLength($"▶️ {info.Title}", 128);
-            presence.Type = ActivityType.Listening;
+            presence.Details = StringUtils.GetTruncatedStringByMaxByteLength($"▶️ {playerInfo.Title}", 128);
             presence.Timestamps = new Timestamps(
-                DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(info.Schedule)),
-                DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(info.Schedule))
-                    .Add(TimeSpan.FromSeconds(info.Duration))
+                DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(playerInfo.Schedule)),
+                DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(playerInfo.Schedule))
+                    .Add(TimeSpan.FromSeconds(playerInfo.Duration))
             );
         }
         else
         {
             // 暂停时切换为暂停状态图标，但由于限制时间进度依旧会自动增长
-            presence.Details = StringUtils.GetTruncatedStringByMaxByteLength($"⏸️ {info.Title}", 128);
+            presence.Details = StringUtils.GetTruncatedStringByMaxByteLength($"⏸️ {playerInfo.Title}", 128);
         }
 
         rpcClient.SetPresence(presence);
