@@ -19,6 +19,7 @@ Enables Discord [Rich Presence](https://discordapp.com/rich-presence) For Neteas
 * 支持按钮跟随一起听.  
 * 支持实时状态显示.
 * 支持多个播放器播放信息同时显示
+* 支持网易云音乐电台/漫游模式
   
   
 ### Screenshot

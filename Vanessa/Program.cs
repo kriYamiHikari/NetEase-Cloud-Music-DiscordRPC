@@ -72,8 +72,7 @@ internal static class Program
         return new NotifyIcon
         {
             Icon = AppResource.icon,
-            // 既然不是单一支持网易云的，这个部分名字感觉可以修改，先保持原样
-            Text = "NetEase Cloud Music DiscordRPC",
+            Text = "Music Discord RPC",
             ContextMenuStrip = contextMenu
         };
     }
