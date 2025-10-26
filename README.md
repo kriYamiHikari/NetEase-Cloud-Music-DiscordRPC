@@ -1,4 +1,17 @@
-# Music Discord Rpc  
+# ⚠️ 项目已迁移 / THIS PROJECT HAS MOVED ⚠️
+
+**感谢您的关注和支持！为了更好地进行社区维护（例如开启 Issues 功能），本项目已迁移至一个全新的独立仓库。**  
+**Thank you for your interest! To better maintain the community (e.g., enabling the Issues tab), this project has been moved to a new, independent repository.**
+
+## [➡️ 点击这里前往新仓库 / Click here to go to the new repository](https://github.com/kriYamiHikari/Music-DiscordRPC)
+
+**请在新仓库中提交 Issues、Pull Requests，并请重新 Star ⭐ 新项目以获取最新更新，非常感谢！**  
+**Please submit Issues, Pull Requests, and re-star ⭐ the new project to stay up-to-date. Thank you!**
+
+---
+*(以下为旧的 README 内容...)*
+
+# Music Discord Rpc
   
   
 Enables Discord [Rich Presence](https://discordapp.com/rich-presence) For Netease Cloud Music and Tencent QQ Music.  
